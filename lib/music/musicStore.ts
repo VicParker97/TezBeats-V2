@@ -17,7 +17,6 @@ import {
     saveQueue,
     loadQueue,
     saveQueueHistory,
-    loadQueueHistory
 } from "./utils/localStorageUtils";
 import type { ActiveFilters, SortBy, SortOrder } from "./utils/searchUtils";
 import { searchTracks, filterTracks, sortTracks } from "./utils/searchUtils";

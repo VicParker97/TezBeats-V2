@@ -14,7 +14,6 @@ export function MarketplaceContent() {
         marketplaceListings,
         isLoadingMarketplaceListings,
         marketplaceError,
-        marketplaceTotalCount,
         marketplaceHasMore,
         fetchMarketplaceListings,
         loadMoreMarketplaceListings,

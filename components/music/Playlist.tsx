@@ -119,7 +119,6 @@ function SortableTrackItem({ track, index, isCurrentTrack, onRemove, onPlay }: {
 export function Playlist() {
     const {
         queue,
-        queueIndex,
         currentTrack,
         removeFromQueue,
         playTrackAtIndex,
