@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import { useMusicStore } from "@/lib/music/musicStore";
-import { parseRoyalties } from "@/lib/music/utils/metadataParser";
 import { Music } from "lucide-react";
 
 interface TrackInfoProps {

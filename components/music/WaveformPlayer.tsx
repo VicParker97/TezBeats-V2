@@ -2,19 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useMusicStore } from "@/lib/music/musicStore";
-import { resolveAudioUri, IPFS_GATEWAYS } from "@/lib/music/utils/ipfsResolver";
+import { resolveAudioUri } from "@/lib/music/utils/ipfsResolver";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 
-interface WaveformPlayerProps {
-    className?: string;
-}
-
-export function WaveformPlayer({ className }: WaveformPlayerProps) {
+export function WaveformPlayer() {
     const audioRef = useRef<HTMLAudioElement>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [currentGatewayIndex, setCurrentGatewayIndex] = useState(0);
+    const [currentGatewayIndex] = useState(0);
     const hasRecorded30Sec = useRef(false);
 
     const {
@@ -28,31 +23,24 @@ export function WaveformPlayer({ className }: WaveformPlayerProps) {
         recordPlay,
     } = useMusicStore();
 
-    // Auto-retry with next gateway on error
+    // Auto-retry with next gateway on error (disabled - single gateway mode)
     const tryNextGateway = () => {
-        if (currentGatewayIndex < IPFS_GATEWAYS.length - 1) {
-            setCurrentGatewayIndex((prev) => prev + 1);
-            setLoadError(null);
-        } else {
-            setLoadError("All IPFS gateways failed. The audio file may be unavailable.");
-            setIsPlaying(false);
-        }
+        setLoadError("The audio file may be unavailable.");
+        useMusicStore.setState({ isPlaying: false });
     };
 
-    // Load audio when track or gateway changes
+    // Load audio when track changes
     useEffect(() => {
         if (!audioRef.current || !currentTrack?.audioUri) {
-            setCurrentGatewayIndex(0);
             setLoadError(null);
             return;
         }
 
         const audio = audioRef.current;
-        setIsLoading(true);
         setLoadError(null);
 
-        // Use resolveAudioUri with the current gateway index
-        const audioUrl = resolveAudioUri(currentTrack.audioUri, currentGatewayIndex);
+        // Use resolveAudioUri
+        const audioUrl = resolveAudioUri(currentTrack.audioUri);
 
         audio.src = audioUrl;
         audio.load();
@@ -60,7 +48,6 @@ export function WaveformPlayer({ className }: WaveformPlayerProps) {
         // Event handlers
         const handleLoadedMetadata = () => {
             setDuration(audio.duration);
-            setIsLoading(false);
             setLoadError(null);
 
             // Auto-play if needed - get fresh isPlaying state
@@ -86,12 +73,11 @@ export function WaveformPlayer({ className }: WaveformPlayerProps) {
 
         const handleError = (e: Event) => {
             console.error("Audio error:", e);
-            setIsLoading(false);
             tryNextGateway();
         };
 
         const handleCanPlay = () => {
-            setIsLoading(false);
+            setLoadError(null);
         };
 
         audio.addEventListener("loadedmetadata", handleLoadedMetadata);
@@ -107,11 +93,11 @@ export function WaveformPlayer({ className }: WaveformPlayerProps) {
             audio.removeEventListener("error", handleError);
             audio.removeEventListener("canplay", handleCanPlay);
         };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentTrack?.id, currentGatewayIndex]);
 
-    // Reset gateway index when track changes
+    // Reset when track changes
     useEffect(() => {
-        setCurrentGatewayIndex(0);
         setLoadError(null);
         hasRecorded30Sec.current = false; // Reset for new track
     }, [currentTrack?.id]);
@@ -156,6 +142,7 @@ export function WaveformPlayer({ className }: WaveformPlayerProps) {
     // Store audio element reference (for seek functionality)
     useEffect(() => {
         if (audioRef.current) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             setAudioInstance(audioRef.current as any);
         }
         return () => setAudioInstance(null);

@@ -41,7 +41,7 @@ export default function MusicPage() {
                             Connect your Tezos wallet to discover and play your music NFT collection from mainnet
                         </p>
                         <p className="text-sm text-muted-foreground">
-                            Click the "Connect Wallet" button in the header to get started
+                            Click the &quot;Connect Wallet&quot; button in the header to get started
                         </p>
                     </div>
                 </div>

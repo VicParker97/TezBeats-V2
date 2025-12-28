@@ -55,6 +55,7 @@ export function MusicLibrary({ address }: MusicLibraryProps) {
         };
 
         loadMusicNFTs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [address]);
 
     // Handle refresh

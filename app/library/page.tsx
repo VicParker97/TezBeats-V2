@@ -3,7 +3,7 @@
 import { useTezos } from "@/lib/tezos/useTezos";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { MusicLibrary } from "@/components/music/MusicLibrary";
-import { Library, Music } from "lucide-react";
+import { Library } from "lucide-react";
 
 export default function LibraryPage() {
     const { address } = useTezos();

@@ -40,10 +40,9 @@ export function resolveAudioUri(uri: string): string {
 /**
  * Get the next IPFS gateway URL for the current resource
  * Returns null since we only use one gateway
- * @param currentUri - Current HTTP URL
  * @returns Always null (single gateway mode)
  */
-export function getNextGatewayUri(currentUri: string): string | null {
+export function getNextGatewayUri(): string | null {
     return null;
 }
 

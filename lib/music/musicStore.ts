@@ -158,10 +158,11 @@ export const useMusicStore = create<MusicState>((set, get) => ({
         if (audioInstance) {
             // HTML5 audio element
             if ('volume' in audioInstance) {
-                (audioInstance as HTMLAudioElement).volume = clampedVolume;
+                (audioInstance as unknown as HTMLAudioElement).volume = clampedVolume;
             }
             // WaveSurfer
             else if ('setVolume' in audioInstance) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (audioInstance as any).setVolume(clampedVolume);
             }
         }
@@ -174,10 +175,11 @@ export const useMusicStore = create<MusicState>((set, get) => ({
             const targetVolume = isMuted ? volume : 0;
             // HTML5 audio element
             if ('volume' in audioInstance) {
-                (audioInstance as HTMLAudioElement).volume = targetVolume;
+                (audioInstance as unknown as HTMLAudioElement).volume = targetVolume;
             }
             // WaveSurfer
             else if ('setVolume' in audioInstance) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (audioInstance as any).setVolume(targetVolume);
             }
             set({ isMuted: !isMuted });
@@ -189,7 +191,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
         if (audioInstance) {
             // HTML5 audio element
             if ('currentTime' in audioInstance) {
-                (audioInstance as HTMLAudioElement).currentTime = time;
+                (audioInstance as unknown as HTMLAudioElement).currentTime = time;
                 set({ currentTime: time });
             }
             // WaveSurfer
@@ -197,6 +199,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
                 const { duration } = get();
                 if (duration > 0) {
                     const seekPosition = time / duration;
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     (audioInstance as any).seekTo(seekPosition);
                     set({ currentTime: time });
                 }

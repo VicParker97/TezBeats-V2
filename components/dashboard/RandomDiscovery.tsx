@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Play, Shuffle, Music } from "lucide-react";
 import { getRandomTrack } from "@/lib/music/utils/analyticsHelpers";
 import Image from "next/image";
+import type { MusicNFT } from "@/lib/music/types/musicNFT";
 
 export function RandomDiscovery() {
     const { musicNFTs, getRecentlyPlayed, setCurrentTrack, addToQueue, play } = useMusicStore();
-    const [randomTrack, setRandomTrack] = useState<any>(null);
+    const [randomTrack, setRandomTrack] = useState<MusicNFT | null>(null);
 
     const refreshRandomTrack = () => {
         const recentIds = getRecentlyPlayed(5).map((t) => t.id);
@@ -21,6 +22,7 @@ export function RandomDiscovery() {
     // Initialize random track
     useEffect(() => {
         refreshRandomTrack();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [musicNFTs.length]);
 
     const handlePlayTrack = () => {

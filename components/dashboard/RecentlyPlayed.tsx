@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Play, Music } from "lucide-react";
 import { formatLastPlayed } from "@/lib/music/utils/analyticsHelpers";
 import Image from "next/image";
+import type { MusicNFT } from "@/lib/music/types/musicNFT";
 
 interface RecentlyPlayedProps {
     limit?: number;
@@ -15,7 +16,7 @@ export function RecentlyPlayed({ limit = 10 }: RecentlyPlayedProps) {
     const { getRecentlyPlayed, playHistory, setCurrentTrack, addToQueue, play } = useMusicStore();
     const recentTracks = getRecentlyPlayed(limit);
 
-    const handlePlayTrack = (track: any) => {
+    const handlePlayTrack = (track: MusicNFT) => {
         setCurrentTrack(track);
         const { queue } = useMusicStore.getState();
         if (!queue.find((t) => t.id === track.id)) {

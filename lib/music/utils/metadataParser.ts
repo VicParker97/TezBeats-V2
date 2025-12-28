@@ -1,4 +1,4 @@
-import type { MusicNFTMetadata, AudioMetadata, Royalties } from "../types/musicNFT";
+import type { MusicNFTMetadata, AudioMetadata } from "../types/musicNFT";
 
 // Comprehensive audio MIME types
 export const AUDIO_MIME_TYPES = [

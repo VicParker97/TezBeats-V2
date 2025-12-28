@@ -67,7 +67,7 @@ export default function Home() {
                         <Alert>
                             <AlertCircle className="h-4 w-4" />
                             <AlertDescription>
-                                Please use the "Connect Wallet" button in the top-right corner to connect your Tezos wallet
+                                Please use the &quot;Connect Wallet&quot; button in the top-right corner to connect your Tezos wallet
                             </AlertDescription>
                         </Alert>
                     </div>

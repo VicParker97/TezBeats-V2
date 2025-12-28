@@ -7,7 +7,6 @@ import { useMusicStore } from "@/lib/music/musicStore";
 export function useKeyboardShortcuts() {
     const router = useRouter();
     const {
-        isPlaying,
         togglePlayPause,
         playNext,
         playPrevious,
