@@ -62,7 +62,8 @@ export function SmartContractInteraction({ onSuccess, onError }: SmartContractIn
 
         try {
             const contract = await tezos.contract.at(address);
-            const methods = Object.keys(contract.methods);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const methods = Object.keys((contract as any).methods);
             setAvailableEntrypoints(methods);
 
             // Load current storage
@@ -114,8 +115,10 @@ export function SmartContractInteraction({ onSuccess, onError }: SmartContractIn
             }
 
             const operation = parsedParams
-                ? await contract.methods[entrypoint](parsedParams).send()
-                : await contract.methods[entrypoint]().send();
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                ? await (contract as any).methods[entrypoint](parsedParams).send()
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                : await (contract as any).methods[entrypoint]().send();
 
             console.log("Contract invocation operation:", operation.opHash);
 
