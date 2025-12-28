@@ -11,6 +11,7 @@ export function WaveformPlayer() {
     const [loadError, setLoadError] = useState<string | null>(null);
     const [currentGatewayIndex] = useState(0);
     const hasRecorded30Sec = useRef(false);
+    const currentTrackId = useRef<string | null>(null);
 
     const {
         currentTrack,
@@ -33,11 +34,18 @@ export function WaveformPlayer() {
     useEffect(() => {
         if (!audioRef.current || !currentTrack?.audioUri) {
             setLoadError(null);
+            currentTrackId.current = null;
+            return;
+        }
+
+        // Only reload if track actually changed
+        if (currentTrackId.current === currentTrack.id) {
             return;
         }
 
         const audio = audioRef.current;
         setLoadError(null);
+        currentTrackId.current = currentTrack.id;
 
         // Use resolveAudioUri
         const audioUrl = resolveAudioUri(currentTrack.audioUri);
@@ -124,9 +132,15 @@ export function WaveformPlayer() {
         if (!audioRef.current) return;
 
         if (isPlaying) {
-            audioRef.current.play().catch((err) => {
-                console.error("Play error:", err);
-            });
+            const playPromise = audioRef.current.play();
+            if (playPromise !== undefined) {
+                playPromise.catch((err) => {
+                    // Ignore AbortError - happens during track changes
+                    if (err.name !== 'AbortError') {
+                        console.error("Play error:", err);
+                    }
+                });
+            }
         } else {
             audioRef.current.pause();
         }

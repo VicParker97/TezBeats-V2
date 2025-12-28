@@ -13,7 +13,6 @@ import { RecentlyPlayed } from "@/components/dashboard/RecentlyPlayed";
 import { RandomDiscovery } from "@/components/dashboard/RandomDiscovery";
 import { FavoriteTracks } from "@/components/dashboard/FavoriteTracks";
 import { TopArtists } from "@/components/dashboard/TopArtists";
-import { saveAnalyticsData } from "@/lib/music/utils/localStorageUtils";
 
 export default function Home() {
     const { address, network } = useTezos();
@@ -40,12 +39,7 @@ export default function Home() {
 
         const handleBeforeUnload = () => {
             const state = useMusicStore.getState();
-            saveAnalyticsData(address, {
-                playHistory: state.playHistory,
-                trackAnalytics: state.trackAnalytics,
-                favorites: state.favorites,
-                version: 1,
-            });
+            state.saveAnalytics(address);
         };
 
         window.addEventListener("beforeunload", handleBeforeUnload);

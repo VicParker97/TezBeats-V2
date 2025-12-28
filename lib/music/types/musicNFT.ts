@@ -1,5 +1,7 @@
 // Music NFT Types based on TZIP-21 standard
 
+import type { MarketplaceData } from "./marketplace";
+
 export interface AudioFormat {
     uri: string;
     mimeType: string;
@@ -53,6 +55,7 @@ export interface MusicNFT {
     metadata: MusicNFTMetadata;
     audioMetadata: AudioMetadata;
     mimeType?: string;
+    marketplace?: MarketplaceData; // Optional marketplace data (loaded on-demand)
 }
 
 export interface MusicPlayerState {

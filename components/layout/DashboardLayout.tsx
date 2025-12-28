@@ -1,7 +1,6 @@
 "use client";
 
 import { Sidebar } from "./Sidebar";
-import { MusicPlayer } from "@/components/music/MusicPlayer";
 
 interface DashboardLayoutProps {
     children: React.ReactNode;
@@ -18,9 +17,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             {/* Main Content with left margin to account for fixed sidebar */}
             <div className="flex-1 flex flex-col overflow-hidden ml-64">
                 {children}
-
-                {/* Music Player - positioned in main content area */}
-                <MusicPlayer />
             </div>
         </div>
     );

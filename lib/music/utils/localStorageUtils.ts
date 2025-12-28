@@ -1,7 +1,8 @@
-import type { AnalyticsData } from "../types/analytics";
+import type { AnalyticsData, QueueData } from "../types/analytics";
+import type { QueueHistoryItem } from "../types/playlist";
 
 const STORAGE_KEY_PREFIX = "tezbeat_analytics_";
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 3;
 
 /**
  * Load analytics data from localStorage for a specific wallet address
@@ -27,14 +28,32 @@ export function loadAnalyticsData(address: string): AnalyticsData | null {
 
         // Handle version migrations if needed
         if (parsed.version < CURRENT_VERSION) {
-            // Add migration logic here if schema changes in future
-            parsed.version = CURRENT_VERSION;
+            // Migrate from v1 to v2: Add playlists array
+            if (parsed.version === 1) {
+                parsed.playlists = [];
+                parsed.version = 2;
+            }
+            // Migrate from v2 to v3: Add queue and queueHistory
+            if (parsed.version === 2) {
+                parsed.queue = {
+                    tracks: [],
+                    currentIndex: -1,
+                    repeatMode: 'off',
+                    shuffleMode: false,
+                    originalQueue: null,
+                    savedAt: Date.now()
+                };
+                parsed.queueHistory = [];
+                parsed.version = 3;
+            }
+            // Future migrations go here
         }
 
         // Validate structure
         if (!Array.isArray(parsed.playHistory) ||
             typeof parsed.trackAnalytics !== "object" ||
-            !Array.isArray(parsed.favorites)) {
+            !Array.isArray(parsed.favorites) ||
+            !Array.isArray(parsed.playlists)) {
             console.warn("Invalid analytics data structure");
             return null;
         }
@@ -111,6 +130,84 @@ export function getEmptyAnalyticsData(): AnalyticsData {
         playHistory: [],
         trackAnalytics: {},
         favorites: [],
+        playlists: [],
+        queue: {
+            tracks: [],
+            currentIndex: -1,
+            repeatMode: 'off',
+            shuffleMode: false,
+            originalQueue: null,
+            savedAt: Date.now()
+        },
+        queueHistory: [],
         version: CURRENT_VERSION,
     };
+}
+
+/**
+ * Save queue state to localStorage
+ * @param address - Wallet address
+ * @param queueData - Queue state to save
+ */
+export function saveQueue(address: string, queueData: QueueData): void {
+    if (!address) return;
+
+    try {
+        const analyticsData = loadAnalyticsData(address) || getEmptyAnalyticsData();
+        analyticsData.queue = queueData;
+        saveAnalyticsData(address, analyticsData);
+    } catch (error) {
+        console.error("Failed to save queue:", error);
+    }
+}
+
+/**
+ * Load queue state from localStorage
+ * @param address - Wallet address
+ * @returns Queue state or null if not found
+ */
+export function loadQueue(address: string): QueueData | null {
+    if (!address) return null;
+
+    try {
+        const analyticsData = loadAnalyticsData(address);
+        return analyticsData?.queue || null;
+    } catch (error) {
+        console.error("Failed to load queue:", error);
+        return null;
+    }
+}
+
+/**
+ * Save queue history to localStorage
+ * @param address - Wallet address
+ * @param queueHistory - Queue history to save
+ */
+export function saveQueueHistory(address: string, queueHistory: QueueHistoryItem[]): void {
+    if (!address) return;
+
+    try {
+        const analyticsData = loadAnalyticsData(address) || getEmptyAnalyticsData();
+        analyticsData.queueHistory = queueHistory;
+        saveAnalyticsData(address, analyticsData);
+    } catch (error) {
+        console.error("Failed to save queue history:", error);
+    }
+}
+
+/**
+ * Load queue history from localStorage
+ * @param address - Wallet address
+ * @returns Queue history or empty array if not found
+ */
+export function loadQueueHistory(address: string): QueueHistoryItem[] {
+    if (!address) return [];
+
+    try {
+        const analyticsData = loadAnalyticsData(address);
+        return analyticsData?.queueHistory || [];
+    } catch (error) {
+        console.error("Failed to load queue history:", error);
+        return [];
+    }
 }

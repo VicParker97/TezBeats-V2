@@ -2,7 +2,23 @@ import { create } from "zustand";
 import type WaveSurfer from "wavesurfer.js";
 import type { MusicNFT, RepeatMode } from "./types/musicNFT";
 import type { PlayHistoryEntry, TrackAnalytics } from "./types/analytics";
-import { loadAnalyticsData, saveAnalyticsData, getEmptyAnalyticsData } from "./utils/localStorageUtils";
+import type { Playlist, QueueHistoryItem } from "./types/playlist";
+import type {
+    MarketplaceData,
+    MarketplaceListing,
+    MarketplaceFilters,
+    MarketplaceSortBy,
+} from "./types/marketplace";
+import { fetchTokenMarketplaceData, fetchMarketplaceListings } from "./api/objktAPI";
+import {
+    loadAnalyticsData,
+    saveAnalyticsData,
+    getEmptyAnalyticsData,
+    saveQueue,
+    loadQueue,
+    saveQueueHistory,
+    loadQueueHistory
+} from "./utils/localStorageUtils";
 import type { ActiveFilters, SortBy, SortOrder } from "./utils/searchUtils";
 import { searchTracks, filterTracks, sortTracks } from "./utils/searchUtils";
 
@@ -42,6 +58,27 @@ interface MusicState {
     trackAnalytics: Record<string, TrackAnalytics>;
     favorites: string[];
 
+    // Playlists
+    playlists: Playlist[];
+
+    // Queue History
+    queueHistory: QueueHistoryItem[];
+
+    // Marketplace (Token-specific data)
+    marketplaceDataCache: Map<string, MarketplaceData>; // Key: "{contract}:{tokenId}"
+    isLoadingMarketplace: boolean;
+
+    // Marketplace Discovery (Browse listings)
+    marketplaceListings: MarketplaceListing[];
+    isLoadingMarketplaceListings: boolean;
+    marketplaceError: string | null;
+    marketplaceTotalCount: number;
+    marketplaceHasMore: boolean;
+    marketplaceFilters: MarketplaceFilters;
+    marketplaceSortBy: MarketplaceSortBy;
+    marketplaceSearchQuery: string;
+    marketplacePage: number;
+
     // Search & Filter
     searchQuery: string;
     activeFilters: ActiveFilters;
@@ -69,6 +106,16 @@ interface MusicState {
     playTrackAtIndex: (index: number) => void;
     toggleRepeat: () => void;
     toggleShuffle: () => void;
+    reorderQueue: (oldIndex: number, newIndex: number) => void;
+    insertNext: (track: MusicNFT) => void; // Insert after current track
+    insertMultipleNext: (tracks: MusicNFT[]) => void; // Insert multiple after current
+    saveQueueToStorage: () => void;
+    loadQueueFromStorage: () => void;
+
+    // Queue History Actions
+    saveQueueAsHistory: (name?: string) => void;
+    loadQueueFromHistory: (historyId: string) => void;
+    deleteQueueHistory: (historyId: string) => void;
 
     // Library Actions
     setMusicNFTs: (nfts: MusicNFT[]) => void;
@@ -85,6 +132,31 @@ interface MusicState {
     loadAnalytics: (address: string) => void;
     saveAnalytics: (address: string) => void;
     clearAnalytics: () => void;
+
+    // Playlist Actions
+    createPlaylist: (name: string, description?: string) => string; // Returns playlist ID
+    deletePlaylist: (playlistId: string) => void;
+    updatePlaylist: (playlistId: string, updates: Partial<Omit<Playlist, "id" | "createdAt">>) => void;
+    addToPlaylist: (playlistId: string, trackId: string) => void;
+    removeFromPlaylist: (playlistId: string, trackId: string) => void;
+    addMultipleToPlaylist: (playlistId: string, trackIds: string[]) => void;
+    reorderPlaylist: (playlistId: string, oldIndex: number, newIndex: number) => void;
+    playPlaylist: (playlistId: string, options?: { startIndex?: number; append?: boolean; shuffle?: boolean }) => void;
+    getPlaylist: (playlistId: string) => Playlist | undefined;
+    getPlaylistTracks: (playlistId: string) => MusicNFT[];
+    saveQueueAsPlaylist: (name?: string) => string | null; // Returns playlist ID or null if queue is empty
+
+    // Marketplace Actions (Token-specific)
+    fetchMarketplaceData: (nft: MusicNFT) => Promise<void>;
+    clearMarketplaceCache: () => void;
+
+    // Marketplace Discovery Actions
+    fetchMarketplaceListings: (reset?: boolean) => Promise<void>;
+    setMarketplaceFilters: (filters: Partial<MarketplaceFilters>) => void;
+    setMarketplaceSortBy: (sortBy: MarketplaceSortBy) => void;
+    setMarketplaceSearchQuery: (query: string) => void;
+    loadMoreMarketplaceListings: () => Promise<void>;
+    clearMarketplaceFilters: () => void;
 
     // Search & Filter Actions
     setSearchQuery: (query: string) => void;
@@ -124,6 +196,27 @@ export const useMusicStore = create<MusicState>((set, get) => ({
     playHistory: [],
     trackAnalytics: {},
     favorites: [],
+
+    // Playlists Initial State
+    playlists: [],
+
+    // Queue History Initial State
+    queueHistory: [],
+
+    // Marketplace Initial State
+    marketplaceDataCache: new Map(),
+    isLoadingMarketplace: false,
+
+    // Marketplace Discovery Initial State
+    marketplaceListings: [],
+    isLoadingMarketplaceListings: false,
+    marketplaceError: null,
+    marketplaceTotalCount: 0,
+    marketplaceHasMore: false,
+    marketplaceFilters: {},
+    marketplaceSortBy: 'recent',
+    marketplaceSearchQuery: '',
+    marketplacePage: 0,
 
     // Search & Filter Initial State
     searchQuery: "",
@@ -215,11 +308,13 @@ export const useMusicStore = create<MusicState>((set, get) => ({
     addToQueue: (track) => {
         const { queue } = get();
         set({ queue: [...queue, track] });
+        get().saveQueueToStorage();
     },
 
     addMultipleToQueue: (tracks) => {
         const { queue } = get();
         set({ queue: [...queue, ...tracks] });
+        get().saveQueueToStorage();
     },
 
     removeFromQueue: (index) => {
@@ -239,9 +334,16 @@ export const useMusicStore = create<MusicState>((set, get) => ({
         }
 
         set({ queue: newQueue, queueIndex: newQueueIndex });
+        get().saveQueueToStorage();
     },
 
     clearQueue: () => {
+        // Save current queue to history before clearing
+        const { queue } = get();
+        if (queue.length > 0) {
+            get().saveQueueAsHistory();
+        }
+
         get().pause();
         set({
             queue: [],
@@ -250,6 +352,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
             originalQueue: [],
             shuffleMode: false,
         });
+        get().saveQueueToStorage();
     },
 
     playNext: () => {
@@ -298,6 +401,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
                 queueIndex: index,
                 currentTime: 0,
             });
+            get().saveQueueToStorage();
             // Play will be triggered when audio loads
         }
     },
@@ -308,6 +412,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
         const currentIndex = modes.indexOf(repeatMode);
         const nextMode = modes[(currentIndex + 1) % modes.length];
         set({ repeatMode: nextMode });
+        get().saveQueueToStorage();
     },
 
     toggleShuffle: () => {
@@ -363,6 +468,210 @@ export const useMusicStore = create<MusicState>((set, get) => ({
                 queueIndex: newIndex >= 0 ? newIndex : queueIndex,
                 shuffleMode: false,
             });
+        }
+        get().saveQueueToStorage();
+    },
+
+    reorderQueue: (oldIndex, newIndex) => {
+        const { queue, queueIndex } = get();
+
+        // Clone array
+        const newQueue = [...queue];
+
+        // Remove from old position
+        const [movedTrack] = newQueue.splice(oldIndex, 1);
+
+        // Insert at new position
+        newQueue.splice(newIndex, 0, movedTrack);
+
+        // Adjust currentIndex if needed
+        let newQueueIndex = queueIndex;
+        if (queueIndex === oldIndex) {
+            newQueueIndex = newIndex;
+        } else if (oldIndex < queueIndex && newIndex >= queueIndex) {
+            newQueueIndex--;
+        } else if (oldIndex > queueIndex && newIndex <= queueIndex) {
+            newQueueIndex++;
+        }
+
+        set({ queue: newQueue, queueIndex: newQueueIndex });
+        get().saveQueueToStorage();
+    },
+
+    insertNext: (track) => {
+        const { queue, queueIndex } = get();
+
+        // If queue is empty or no track playing, just add to queue
+        if (queue.length === 0 || queueIndex === -1) {
+            get().addToQueue(track);
+            return;
+        }
+
+        // Check if track already in queue
+        const existingIndex = queue.findIndex(t => t.id === track.id);
+        if (existingIndex !== -1) {
+            // Track exists - move it to play next position
+            const newQueue = [...queue];
+            const [movedTrack] = newQueue.splice(existingIndex, 1);
+            newQueue.splice(queueIndex + 1, 0, movedTrack);
+
+            // Adjust queueIndex if we removed track before current position
+            const newQueueIndex = existingIndex < queueIndex ? queueIndex - 1 : queueIndex;
+            set({ queue: newQueue, queueIndex: newQueueIndex });
+        } else {
+            // New track - insert after current
+            const newQueue = [...queue];
+            newQueue.splice(queueIndex + 1, 0, track);
+            set({ queue: newQueue });
+        }
+
+        get().saveQueueToStorage();
+    },
+
+    insertMultipleNext: (tracks) => {
+        const { queue, queueIndex } = get();
+
+        if (queue.length === 0 || queueIndex === -1) {
+            get().addMultipleToQueue(tracks);
+            return;
+        }
+
+        // Insert all tracks after current position
+        const newQueue = [...queue];
+        newQueue.splice(queueIndex + 1, 0, ...tracks);
+
+        set({ queue: newQueue });
+        get().saveQueueToStorage();
+    },
+
+    // Queue Persistence
+    saveQueueToStorage: () => {
+        const { queue, queueIndex, repeatMode, shuffleMode, originalQueue } = get();
+
+        // Get wallet address from localStorage
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key?.startsWith('tezbeat_analytics_')) {
+                    const address = key.replace('tezbeat_analytics_', '');
+                    const queueData = {
+                        tracks: queue,
+                        currentIndex: queueIndex,
+                        repeatMode,
+                        shuffleMode,
+                        originalQueue,
+                        savedAt: Date.now()
+                    };
+                    saveQueue(address, queueData);
+                    break;
+                }
+            }
+        } catch (error) {
+            console.error('Failed to save queue:', error);
+        }
+    },
+
+    loadQueueFromStorage: () => {
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key?.startsWith('tezbeat_analytics_')) {
+                    const address = key.replace('tezbeat_analytics_', '');
+                    const saved = loadQueue(address);
+                    if (!saved) return;
+
+                    set({
+                        queue: saved.tracks,
+                        queueIndex: saved.currentIndex,
+                        repeatMode: saved.repeatMode,
+                        shuffleMode: saved.shuffleMode,
+                        originalQueue: saved.originalQueue || [],
+                    });
+
+                    // Restore current track if valid index
+                    if (saved.currentIndex >= 0 && saved.tracks[saved.currentIndex]) {
+                        set({ currentTrack: saved.tracks[saved.currentIndex] });
+                    }
+                    break;
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load queue:', error);
+        }
+    },
+
+    // Queue History Actions
+    saveQueueAsHistory: (name) => {
+        const { queue, queueHistory } = get();
+
+        if (queue.length === 0) return;
+
+        const historyItem: QueueHistoryItem = {
+            id: crypto.randomUUID(),
+            name: name || `Queue from ${new Date().toLocaleDateString()}`,
+            tracks: queue.map(t => t.id),
+            playedAt: Date.now(),
+            source: 'manual'
+        };
+
+        // Keep last 50 queue history items
+        const newHistory = [historyItem, ...queueHistory].slice(0, 50);
+        set({ queueHistory: newHistory });
+
+        // Save to localStorage
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key?.startsWith('tezbeat_analytics_')) {
+                    const address = key.replace('tezbeat_analytics_', '');
+                    saveQueueHistory(address, newHistory);
+                    break;
+                }
+            }
+        } catch (error) {
+            console.error('Failed to save queue history:', error);
+        }
+    },
+
+    loadQueueFromHistory: (historyId) => {
+        const { queueHistory, musicNFTs } = get();
+        const historyItem = queueHistory.find(h => h.id === historyId);
+
+        if (!historyItem) return;
+
+        // Convert track IDs to MusicNFT objects
+        const tracks = historyItem.tracks
+            .map(id => musicNFTs.find(t => t.id === id))
+            .filter(Boolean) as MusicNFT[];
+
+        if (tracks.length > 0) {
+            set({
+                queue: tracks,
+                queueIndex: 0,
+                currentTrack: tracks[0],
+                isPlaying: false
+            });
+            get().saveQueueToStorage();
+        }
+    },
+
+    deleteQueueHistory: (historyId) => {
+        const { queueHistory } = get();
+        const newHistory = queueHistory.filter(h => h.id !== historyId);
+        set({ queueHistory: newHistory });
+
+        // Save to localStorage
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key?.startsWith('tezbeat_analytics_')) {
+                    const address = key.replace('tezbeat_analytics_', '');
+                    saveQueueHistory(address, newHistory);
+                    break;
+                }
+            }
+        } catch (error) {
+            console.error('Failed to delete queue history:', error);
         }
     },
 
@@ -429,11 +738,13 @@ export const useMusicStore = create<MusicState>((set, get) => ({
                 const key = localStorage.key(i);
                 if (key?.startsWith('tezbeat_analytics_')) {
                     const address = key.replace('tezbeat_analytics_', '');
+                    const { playlists } = get();
                     saveAnalyticsData(address, {
                         playHistory,
                         trackAnalytics,
                         favorites: updatedFavorites,
-                        version: 1,
+                        playlists,
+                        version: 2,
                     });
                     break;
                 }
@@ -523,7 +834,25 @@ export const useMusicStore = create<MusicState>((set, get) => ({
                 playHistory: data.playHistory,
                 trackAnalytics: data.trackAnalytics,
                 favorites: data.favorites,
+                playlists: data.playlists,
+                queueHistory: data.queueHistory || [],
             });
+
+            // Load queue state if available
+            if (data.queue && data.queue.tracks.length > 0) {
+                set({
+                    queue: data.queue.tracks,
+                    queueIndex: data.queue.currentIndex,
+                    repeatMode: data.queue.repeatMode,
+                    shuffleMode: data.queue.shuffleMode,
+                    originalQueue: data.queue.originalQueue || [],
+                });
+
+                // Restore current track if valid index
+                if (data.queue.currentIndex >= 0 && data.queue.tracks[data.queue.currentIndex]) {
+                    set({ currentTrack: data.queue.tracks[data.queue.currentIndex] });
+                }
+            }
         } else {
             // Initialize with empty data
             const emptyData = getEmptyAnalyticsData();
@@ -531,17 +860,29 @@ export const useMusicStore = create<MusicState>((set, get) => ({
                 playHistory: emptyData.playHistory,
                 trackAnalytics: emptyData.trackAnalytics,
                 favorites: emptyData.favorites,
+                playlists: emptyData.playlists,
+                queueHistory: emptyData.queueHistory || [],
             });
         }
     },
 
     saveAnalytics: (address) => {
-        const { playHistory, trackAnalytics, favorites } = get();
+        const { playHistory, trackAnalytics, favorites, playlists, queue, queueIndex, repeatMode, shuffleMode, originalQueue, queueHistory } = get();
         saveAnalyticsData(address, {
             playHistory,
             trackAnalytics,
             favorites,
-            version: 1,
+            playlists,
+            queue: {
+                tracks: queue,
+                currentIndex: queueIndex,
+                repeatMode,
+                shuffleMode,
+                originalQueue,
+                savedAt: Date.now()
+            },
+            queueHistory,
+            version: 3,
         });
     },
 
@@ -550,7 +891,320 @@ export const useMusicStore = create<MusicState>((set, get) => ({
             playHistory: [],
             trackAnalytics: {},
             favorites: [],
+            playlists: [],
+            queueHistory: [],
         });
+    },
+
+    // Playlist Actions
+    createPlaylist: (name, description) => {
+        const { playlists } = get();
+        const now = Date.now();
+        const newPlaylist: Playlist = {
+            id: crypto.randomUUID(),
+            name,
+            description,
+            trackIds: [],
+            createdAt: now,
+            updatedAt: now,
+        };
+
+        set({ playlists: [...playlists, newPlaylist] });
+        return newPlaylist.id;
+    },
+
+    deletePlaylist: (playlistId) => {
+        const { playlists } = get();
+        set({ playlists: playlists.filter((p) => p.id !== playlistId) });
+    },
+
+    updatePlaylist: (playlistId, updates) => {
+        const { playlists } = get();
+        set({
+            playlists: playlists.map((p) =>
+                p.id === playlistId
+                    ? { ...p, ...updates, updatedAt: Date.now() }
+                    : p
+            ),
+        });
+    },
+
+    addToPlaylist: (playlistId, trackId) => {
+        const { playlists } = get();
+        set({
+            playlists: playlists.map((p) =>
+                p.id === playlistId && !p.trackIds.includes(trackId)
+                    ? {
+                          ...p,
+                          trackIds: [...p.trackIds, trackId],
+                          updatedAt: Date.now(),
+                      }
+                    : p
+            ),
+        });
+    },
+
+    removeFromPlaylist: (playlistId, trackId) => {
+        const { playlists } = get();
+        set({
+            playlists: playlists.map((p) =>
+                p.id === playlistId
+                    ? {
+                          ...p,
+                          trackIds: p.trackIds.filter((id) => id !== trackId),
+                          updatedAt: Date.now(),
+                      }
+                    : p
+            ),
+        });
+    },
+
+    addMultipleToPlaylist: (playlistId, trackIds) => {
+        const { playlists } = get();
+        set({
+            playlists: playlists.map((p) =>
+                p.id === playlistId
+                    ? {
+                          ...p,
+                          trackIds: [
+                              ...p.trackIds,
+                              ...trackIds.filter((id) => !p.trackIds.includes(id)),
+                          ],
+                          updatedAt: Date.now(),
+                      }
+                    : p
+            ),
+        });
+    },
+
+    playPlaylist: (playlistId, options = {}) => {
+        const { playlists, musicNFTs, queue, queueIndex } = get();
+        const { startIndex = 0, append = false, shuffle = false } = options;
+        const playlist = playlists.find((p) => p.id === playlistId);
+
+        if (!playlist || playlist.trackIds.length === 0) return;
+
+        // Get tracks in playlist order
+        let playlistTracks = playlist.trackIds
+            .map((id) => musicNFTs.find((nft) => nft.id === id))
+            .filter((nft): nft is MusicNFT => nft !== undefined);
+
+        if (playlistTracks.length === 0) return;
+
+        // Shuffle if requested
+        if (shuffle) {
+            playlistTracks = playlistTracks.sort(() => Math.random() - 0.5);
+        }
+
+        if (append) {
+            // Append to existing queue
+            const newQueue = [...queue, ...playlistTracks];
+            set({ queue: newQueue });
+
+            // If nothing playing, start first added track
+            if (queueIndex === -1 || !get().currentTrack) {
+                set({
+                    queueIndex: queue.length, // First new track
+                    currentTrack: playlistTracks[0],
+                });
+                setTimeout(() => {
+                    get().play();
+                }, 100);
+            }
+        } else {
+            // Replace queue (existing behavior)
+            set({ queue: playlistTracks, queueIndex: startIndex });
+
+            // Play the track at start index
+            if (playlistTracks[startIndex]) {
+                set({ currentTrack: playlistTracks[startIndex] });
+                setTimeout(() => {
+                    get().play();
+                }, 100);
+            }
+        }
+
+        // Save queue state
+        get().saveQueueToStorage();
+    },
+
+    reorderPlaylist: (playlistId, oldIndex, newIndex) => {
+        const { playlists } = get();
+        const playlist = playlists.find(p => p.id === playlistId);
+        if (!playlist) return;
+
+        const newTrackIds = [...playlist.trackIds];
+        const [movedId] = newTrackIds.splice(oldIndex, 1);
+        newTrackIds.splice(newIndex, 0, movedId);
+
+        const updatedPlaylists = playlists.map(p =>
+            p.id === playlistId
+                ? { ...p, trackIds: newTrackIds, updatedAt: Date.now() }
+                : p
+        );
+
+        set({ playlists: updatedPlaylists });
+
+        // Persist to localStorage
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key?.startsWith('tezbeat_analytics_')) {
+                    const address = key.replace('tezbeat_analytics_', '');
+                    get().saveAnalytics(address);
+                    break;
+                }
+            }
+        } catch (error) {
+            console.error('Failed to save playlist reorder:', error);
+        }
+    },
+
+    getPlaylist: (playlistId) => {
+        const { playlists } = get();
+        return playlists.find((p) => p.id === playlistId);
+    },
+
+    getPlaylistTracks: (playlistId) => {
+        const { playlists, musicNFTs } = get();
+        const playlist = playlists.find((p) => p.id === playlistId);
+
+        if (!playlist) return [];
+
+        return playlist.trackIds
+            .map((id) => musicNFTs.find((nft) => nft.id === id))
+            .filter((nft): nft is MusicNFT => nft !== undefined);
+    },
+
+    saveQueueAsPlaylist: (name) => {
+        const { queue } = get();
+
+        if (queue.length === 0) return null;
+
+        const playlistName = name || `Queue from ${new Date().toLocaleDateString()}`;
+        const playlistId = get().createPlaylist(playlistName, `Saved from queue with ${queue.length} tracks`);
+
+        // Add all queue tracks to playlist
+        const trackIds = queue.map(t => t.id);
+        get().addMultipleToPlaylist(playlistId, trackIds);
+
+        return playlistId;
+    },
+
+    // Marketplace Actions
+    fetchMarketplaceData: async (nft) => {
+        const { marketplaceDataCache } = get();
+        const cacheKey = `${nft.contract}:${nft.tokenId}`;
+
+        // Check cache first
+        if (marketplaceDataCache.has(cacheKey)) {
+            return;
+        }
+
+        set({ isLoadingMarketplace: true });
+
+        try {
+            const data = await fetchTokenMarketplaceData(nft.contract, nft.tokenId);
+            const newCache = new Map(marketplaceDataCache);
+            newCache.set(cacheKey, data);
+            set({ marketplaceDataCache: newCache });
+        } catch (error) {
+            console.error("Failed to fetch marketplace data:", error);
+        } finally {
+            set({ isLoadingMarketplace: false });
+        }
+    },
+
+    clearMarketplaceCache: () => {
+        set({ marketplaceDataCache: new Map() });
+    },
+
+    // Marketplace Discovery Actions
+    fetchMarketplaceListings: async (reset = false) => {
+        set({
+            isLoadingMarketplaceListings: true,
+            marketplaceError: null,
+        });
+
+        try {
+            const { marketplaceFilters, marketplaceSortBy, marketplacePage } = get();
+            const page = reset ? 0 : marketplacePage;
+            const limit = 24;
+            const offset = page * limit;
+
+            const response = await fetchMarketplaceListings(
+                limit,
+                offset,
+                marketplaceFilters,
+                marketplaceSortBy
+            );
+
+            set({
+                marketplaceListings: reset
+                    ? response.listings
+                    : [...get().marketplaceListings, ...response.listings],
+                marketplaceTotalCount: response.total,
+                marketplaceHasMore: response.hasMore,
+                marketplacePage: page,
+                isLoadingMarketplaceListings: false,
+            });
+        } catch (error) {
+            console.error("Failed to fetch marketplace listings:", error);
+            set({
+                marketplaceError: error instanceof Error ? error.message : "Failed to load listings",
+                isLoadingMarketplaceListings: false,
+            });
+        }
+    },
+
+    setMarketplaceFilters: (filters) => {
+        const { marketplaceFilters } = get();
+        set({
+            marketplaceFilters: { ...marketplaceFilters, ...filters },
+            marketplacePage: 0,
+        });
+        // Fetch with new filters
+        get().fetchMarketplaceListings(true);
+    },
+
+    setMarketplaceSortBy: (sortBy) => {
+        set({
+            marketplaceSortBy: sortBy,
+            marketplacePage: 0,
+        });
+        // Fetch with new sort
+        get().fetchMarketplaceListings(true);
+    },
+
+    setMarketplaceSearchQuery: (query) => {
+        set({
+            marketplaceSearchQuery: query,
+            marketplacePage: 0,
+        });
+        // TODO: Implement search filtering (can be done client-side or add to API)
+    },
+
+    loadMoreMarketplaceListings: async () => {
+        const { marketplaceHasMore, isLoadingMarketplaceListings, marketplacePage } = get();
+
+        if (!marketplaceHasMore || isLoadingMarketplaceListings) {
+            return;
+        }
+
+        const nextPage = marketplacePage + 1;
+        set({ marketplacePage: nextPage });
+        await get().fetchMarketplaceListings(false);
+    },
+
+    clearMarketplaceFilters: () => {
+        set({
+            marketplaceFilters: {},
+            marketplaceSortBy: 'recent',
+            marketplaceSearchQuery: '',
+            marketplacePage: 0,
+        });
+        // Fetch with cleared filters
+        get().fetchMarketplaceListings(true);
     },
 
     // Search & Filter Actions

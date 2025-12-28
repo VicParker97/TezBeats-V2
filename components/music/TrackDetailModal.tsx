@@ -13,7 +13,9 @@ import { ExternalLink, Copy, CheckCircle2 } from "lucide-react";
 import Image from "next/image";
 import type { MusicNFT } from "@/lib/music/types/musicNFT";
 import { formatRoyalties, getTotalRoyaltyPercentage, truncateAddress } from "@/lib/music/utils/royaltiesUtils";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { MarketplaceInfoSection } from "./MarketplaceInfoSection";
+import { useMusicStore } from "@/lib/music/musicStore";
 
 interface TrackDetailModalProps {
     track: MusicNFT | null;
@@ -23,8 +25,26 @@ interface TrackDetailModalProps {
 
 export function TrackDetailModal({ track, open, onOpenChange }: TrackDetailModalProps) {
     const [copied, setCopied] = useState<string | null>(null);
+    const {
+        marketplaceDataCache,
+        isLoadingMarketplace,
+        fetchMarketplaceData,
+    } = useMusicStore();
+
+    // Fetch marketplace data when modal opens
+    useEffect(() => {
+        if (open && track) {
+            const cacheKey = `${track.contract}:${track.tokenId}`;
+            if (!marketplaceDataCache.has(cacheKey)) {
+                fetchMarketplaceData(track);
+            }
+        }
+    }, [open, track, marketplaceDataCache, fetchMarketplaceData]);
 
     if (!track) return null;
+
+    const cacheKey = `${track.contract}:${track.tokenId}`;
+    const marketplaceData = marketplaceDataCache.get(cacheKey);
 
     const copyToClipboard = (text: string, label: string) => {
         navigator.clipboard.writeText(text);
@@ -167,6 +187,14 @@ export function TrackDetailModal({ track, open, onOpenChange }: TrackDetailModal
                         </div>
                     )}
 
+                    {/* Marketplace Information */}
+                    <div className="border-t pt-6">
+                        <MarketplaceInfoSection
+                            data={marketplaceData}
+                            isLoading={isLoadingMarketplace}
+                        />
+                    </div>
+
                     {/* Royalties */}
                     {royaltyShares.length > 0 && (
                         <div className="grid gap-4">
@@ -249,19 +277,6 @@ export function TrackDetailModal({ track, open, onOpenChange }: TrackDetailModal
                         </div>
                     )}
 
-                    {/* View on Marketplace */}
-                    <div className="pt-4 border-t">
-                        <Button variant="outline" className="w-full" asChild>
-                            <a
-                                href={`https://objkt.com/asset/${track.contract}/${track.tokenId}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                            >
-                                <ExternalLink className="h-4 w-4 mr-2" />
-                                View on Objkt.com
-                            </a>
-                        </Button>
-                    </div>
                 </div>
             </DialogContent>
         </Dialog>

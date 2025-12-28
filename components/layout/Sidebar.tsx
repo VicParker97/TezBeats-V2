@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Home, Library, ChevronUp, ChevronDown } from "lucide-react";
+import { Home, Library, ListMusic, ShoppingBag, ChevronUp, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Playlist } from "@/components/music/Playlist";
 
@@ -19,6 +19,8 @@ export function Sidebar({ className }: SidebarProps) {
     const navItems = [
         { href: "/", label: "Dashboard", icon: Home },
         { href: "/library", label: "Library", icon: Library },
+        { href: "/playlists", label: "Playlists", icon: ListMusic },
+        { href: "/marketplace", label: "Marketplace", icon: ShoppingBag },
     ];
 
     return (

@@ -5,6 +5,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { WalletProvider } from "@/components/providers/wallet-provider";
 import { KeyboardShortcutsProvider } from "@/components/keyboard/KeyboardShortcutsProvider";
+import { MusicPlayer } from "@/components/music/MusicPlayer";
 import Header from "@/components/layout/Header";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -31,6 +32,8 @@ export default function RootLayout({
                             <div className="flex min-h-screen flex-col">
                                 <Header />
                                 <main className="flex-1">{children}</main>
+                                {/* Global Music Player - persists across page navigation */}
+                                <MusicPlayer />
                             </div>
                         </KeyboardShortcutsProvider>
                     </WalletProvider>

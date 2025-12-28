@@ -13,6 +13,7 @@ import {
     Repeat,
     Repeat1,
     Shuffle,
+    Trash2,
 } from "lucide-react";
 
 interface PlayerControlsProps {
@@ -38,6 +39,8 @@ export function PlayerControls({ className, compact = false }: PlayerControlsPro
         toggleRepeat,
         toggleShuffle,
         currentTrack,
+        clearQueue,
+        queue,
     } = useMusicStore();
 
     // Format time (seconds) to MM:SS
@@ -56,6 +59,13 @@ export function PlayerControls({ className, compact = false }: PlayerControlsPro
     // Handle seek
     const handleSeekChange = (value: number[]) => {
         seek(value[0]);
+    };
+
+    // Handle clear queue
+    const handleClearQueue = () => {
+        if (queue.length > 0 && confirm("Clear entire queue?")) {
+            clearQueue();
+        }
     };
 
     const hasTrack = !!currentTrack;
@@ -216,6 +226,18 @@ export function PlayerControls({ className, compact = false }: PlayerControlsPro
                     ) : (
                         <Repeat className="h-4 w-4" />
                     )}
+                </Button>
+
+                {/* Clear Queue */}
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleClearQueue}
+                    disabled={queue.length === 0}
+                    title="Clear queue"
+                    className="h-9 w-9"
+                >
+                    <Trash2 className="h-4 w-4" />
                 </Button>
             </div>
 
